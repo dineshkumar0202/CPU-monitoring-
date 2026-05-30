@@ -1,3 +1,6 @@
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -6,12 +9,11 @@ const { startCpuMonitor } = require('./utils/cpuMonitor');
 const { reschedulePendingMessages } = require('./controllers/messageController');
 const messageRoutes = require('./routes/messageRoutes');
 
-// Load env variables
-dotenv.config();
+dotenv.config({ override: true });
+console.log('Debug: Loaded MONGO_URI =', process.env.MONGO_URI);
 
 const app = express();
 
-// CORS configuration (allow Vite dev and deployed production frontends)
 const allowedOrigins = [
   'http://localhost:5173',
   process.env.FRONTEND_URL
@@ -19,7 +21,6 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
       return callback(null, true);
