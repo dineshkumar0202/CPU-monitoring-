@@ -4,7 +4,7 @@ import Task2Page from './pages/Task2Page';
 
 function App() {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/" element={<Task2Page />} />
         {/* Catch-all route to fallback to dashboard */}
