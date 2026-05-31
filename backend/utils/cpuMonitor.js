@@ -8,7 +8,13 @@ function getCpuTimes() {
   if (!cpus || cpus.length === 0) {
     return { idle: 0, total: 0 };
   }
-  let user = 0, nice = 0, sys = 0, idle = 0, irq = 0;
+
+  let user = 0;
+  let nice = 0;
+  let sys = 0;
+  let idle = 0;
+  let irq = 0;
+
   for (const cpu of cpus) {
     user += cpu.times.user;
     nice += cpu.times.nice;
@@ -16,6 +22,7 @@ function getCpuTimes() {
     idle += cpu.times.idle;
     irq += cpu.times.irq;
   }
+
   const total = user + nice + sys + idle + irq;
   return { idle, total };
 }
@@ -27,25 +34,33 @@ function calculateCpuUsage() {
   oldCpuTimes = newCpuTimes;
 
   if (totalDiff === 0) return 0;
-  return (1 - (idleDiff / totalDiff)) * 100;
+  return (1 - idleDiff / totalDiff) * 100;
 }
 
 function startCpuMonitor() {
   const THRESHOLD = parseInt(process.env.CPU_THRESHOLD, 10) || 70;
-  const INTERVAL = 5000; // check every 5 seconds
+  const INTERVAL = 5000;
+  const SPIKE_LIMIT = 3;
+  let consecutiveSpikes = 0;
 
-  // Initialize baseline
   oldCpuTimes = getCpuTimes();
 
   setInterval(() => {
     try {
       currentCpuUsage = calculateCpuUsage();
+
       if (currentCpuUsage >= THRESHOLD) {
-        console.log(`⚠️  CPU at ${currentCpuUsage.toFixed(2)}% — exceeds ${THRESHOLD}% threshold. Restarting...`);
-        process.exit(1);
+        consecutiveSpikes++;
+
+        if (consecutiveSpikes >= SPIKE_LIMIT) {
+          console.log('Server restarting...');
+          process.exit(1);
+        }
+      } else {
+        consecutiveSpikes = 0;
       }
     } catch (err) {
-      console.error('Error fetching CPU usage:', err);
+      console.error(`CPU monitor error: ${err.message}`);
     }
   }, INTERVAL);
 }

@@ -13,9 +13,24 @@ const WEEKDAYS = {
   saturday: 6
 };
 
+const scheduledTasks = new Map();
+
+const stopScheduledTask = (id) => {
+  const key = id.toString();
+  const task = scheduledTasks.get(key);
+  if (!task) {
+    return;
+  }
+
+  task.stop();
+  scheduledTasks.delete(key);
+};
+
 // Helper function to schedule a node-cron job for a message
 const scheduleCronJob = (jobObj) => {
   const { _id, message, day, time } = jobObj;
+  stopScheduledTask(_id);
+
   const [hourStr, minuteStr] = time.split(':');
   const hour = parseInt(hourStr, 10);
   const minute = parseInt(minuteStr, 10);
@@ -39,8 +54,6 @@ const scheduleCronJob = (jobObj) => {
     cronExpression = `${minute} ${hour} * * ${dayNumber}`;
   }
 
-  console.log(`Scheduling job for message "${message}" (ID: ${_id}) with expression: "${cronExpression}"`);
-
   const task = cron.schedule(cronExpression, async () => {
     try {
       // If it is a specific calendar date, check if the current year matches the scheduled year
@@ -53,25 +66,20 @@ const scheduleCronJob = (jobObj) => {
         const currentYear = parseInt(currentYearStr, 10);
 
         if (currentYear !== scheduledYear) {
-          console.log(`Cron job for "${message}" triggered, but year ${currentYear} does not match scheduled year ${scheduledYear}. Skipping execution.`);
           return; // Wait for the correct year
         }
 
         // Save the message into MongoDB at exactly this time!
         await Message.create({ message, day, time });
-        console.log(`✅ Message saved (delivered) on scheduled date: "${message}"`);
-
         // Remove the job from ScheduledJob collection
         await ScheduledJob.findByIdAndDelete(_id);
-        console.log(`🗑️ Removed scheduled job configuration for ID: ${_id}`);
 
         // Stop/destroy the cron job
-        task.stop();
+        stopScheduledTask(_id);
       } else {
         // Recurring weekly weekday
         // Save the message into MongoDB at exactly this time!
         await Message.create({ message, day, time });
-        console.log(`✅ Recurring message saved (delivered): "${message}"`);
         // We do NOT delete the job from ScheduledJob or stop the task since it recurrs weekly
       }
     } catch (err) {
@@ -81,6 +89,8 @@ const scheduleCronJob = (jobObj) => {
     scheduled: true,
     timezone: 'Asia/Kolkata'
   });
+
+  scheduledTasks.set(_id.toString(), task);
 };
 
 // @desc    Schedule a message
@@ -209,9 +219,10 @@ const getAllMessages = async (req, res) => {
 const getCpuStatus = async (req, res) => {
   try {
     const usage = getCurrentCpuUsage();
+    const threshold = parseInt(process.env.CPU_THRESHOLD, 10) || 70;
     return res.status(200).json({
       success: true,
-      data: { usage }
+      data: { usage, threshold }
     });
   } catch (error) {
     return res.status(500).json({
@@ -226,8 +237,6 @@ const getCpuStatus = async (req, res) => {
 const reschedulePendingMessages = async () => {
   try {
     const pendingJobs = await ScheduledJob.find({});
-    console.log(`Found ${pendingJobs.length} scheduled jobs to restore...`);
-
     const now = new Date();
 
     for (const job of pendingJobs) {
@@ -236,7 +245,6 @@ const reschedulePendingMessages = async () => {
         const scheduledDate = new Date(`${job.day}T${job.time}:00+05:30`);
         if (scheduledDate < now) {
           // If the date has passed while server was offline, mark it as delivered/saved
-          console.log(`Scheduled job "${job.message}" (ID: ${job._id}) time passed while offline. Saving as delivered.`);
           await Message.create({
             message: job.message,
             day: job.day,
@@ -254,9 +262,49 @@ const reschedulePendingMessages = async () => {
   }
 };
 
+// @desc    Delete a scheduled or sent message
+// @route   DELETE /api/message/:id
+// @access  Public
+const deleteMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Try deleting from ScheduledJob first (pending messages)
+    const deletedJob = await ScheduledJob.findByIdAndDelete(id);
+    if (deletedJob) {
+      stopScheduledTask(id);
+      return res.status(200).json({
+        success: true,
+        message: 'Scheduled message deleted successfully'
+      });
+    }
+
+    // If not found in ScheduledJob, try Message collection (sent messages)
+    const deletedMsg = await Message.findByIdAndDelete(id);
+    if (deletedMsg) {
+      return res.status(200).json({
+        success: true,
+        message: 'Sent message deleted successfully'
+      });
+    }
+
+    return res.status(404).json({
+      success: false,
+      message: 'Message not found'
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error deleting message',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   scheduleMessage,
   getAllMessages,
   getCpuStatus,
+  deleteMessage,
   reschedulePendingMessages
 };

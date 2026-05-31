@@ -1,19 +1,18 @@
-const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+const dotenv = require('dotenv');
+// Load env variables immediately before other imports
+dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const db = require('./config/db');
 const { startCpuMonitor } = require('./utils/cpuMonitor');
 const { reschedulePendingMessages } = require('./controllers/messageController');
 const messageRoutes = require('./routes/messageRoutes');
 
-dotenv.config({ override: true });
-console.log('Debug: Loaded MONGO_URI =', process.env.MONGO_URI);
 
 const app = express();
 
+// CORS configuration (allow Vite dev and deployed production frontends)
 const allowedOrigins = [
   'http://localhost:5173',
   process.env.FRONTEND_URL
@@ -21,8 +20,16 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+
+    // Check if origin is a local address (localhost or 127.0.0.1)
+    const isLocalhost = origin.startsWith('http://localhost:') || 
+                        origin.startsWith('http://127.0.0.1:') ||
+                        origin === 'http://localhost' ||
+                        origin === 'http://127.0.0.1';
+
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*') || isLocalhost) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
@@ -45,8 +52,6 @@ const PORT = process.env.PORT || 5000;
 
 // Connect to MongoDB and then start core server utilities
 db.connect().then(async () => {
-  console.log('Database connected successfully. Booting server systems...');
-  
   // 1. Reschedule any messages with 'pending' status from the database
   await reschedulePendingMessages();
   
@@ -54,11 +59,24 @@ db.connect().then(async () => {
   startCpuMonitor();
   
   // 3. Start Express server
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  const server = app.listen(PORT);
+
+  server.on('listening', () => {
+    console.log(`Server connected: http://localhost:${PORT}`);
+    console.log('Server restart complete');
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.log(`Server already running on port ${PORT}`);
+      process.exit(0);
+    }
+
+    console.error(`Server error: ${err.message}`);
+    process.exit(1);
   });
 }).catch((err) => {
-  console.error('Failed to start server due to DB connection failure:', err);
+  console.error(`Server startup failed: ${err.message}`);
   process.exit(1);
 });
-// Nodemon watcher trigger comment: port 5001 reload 2
+// Nodemon watcher trigger comment: port 5001 reload 5

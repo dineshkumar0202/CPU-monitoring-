@@ -3,6 +3,7 @@ import api from '../api/axios';
 
 const CpuMonitor = () => {
   const [cpuUsage, setCpuUsage] = useState(0);
+  const [threshold, setThreshold] = useState(70);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [restarting, setRestarting] = useState(false);
@@ -13,13 +14,16 @@ const CpuMonitor = () => {
       const res = await api.get('/message/cpu-status');
       if (res.data && res.data.success) {
         setCpuUsage(res.data.data.usage);
+        if (res.data.data.threshold) {
+          setThreshold(res.data.data.threshold);
+        }
         setError(null);
         setRestarting(false);
       }
     } catch (err) {
       // If fetching fails, and cpu was previously high or we just can't connect,
       // it is highly likely that the server is currently restarting due to CPU threshold.
-      if (cpuUsage >= 70 || restarting) {
+      if (cpuUsage >= threshold || restarting) {
         setRestarting(true);
         setError('Server is auto-restarting...');
       } else {
@@ -49,12 +53,12 @@ const CpuMonitor = () => {
   let statusText = 'Server running normally';
   let bgGlow = 'rgba(139,92,246,0.02)';
 
-  if (cpuUsage >= 70) {
+  if (cpuUsage >= threshold) {
     statusColor = 'text-red-500';
     barGradient = 'from-red-600 to-rose-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]';
     statusText = '⚠️ Server will restart soon!';
     bgGlow = 'rgba(239,68,68,0.06)';
-  } else if (cpuUsage >= 50) {
+  } else if (cpuUsage >= threshold * 0.7) {
     statusColor = 'text-amber-500';
     barGradient = 'from-amber-500 to-yellow-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]';
     statusText = 'CPU usage getting high';
@@ -70,8 +74,8 @@ const CpuMonitor = () => {
         <div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-900 flex items-center gap-2">
             <span className="relative flex h-3 w-3">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${cpuUsage >= 70 ? 'bg-red-500' : cpuUsage >= 50 ? 'bg-amber-500' : 'bg-violet-500'}`}></span>
-              <span className={`relative inline-flex rounded-full h-3 w-3 ${cpuUsage >= 70 ? 'bg-red-500' : cpuUsage >= 50 ? 'bg-amber-500' : 'bg-violet-500'}`}></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${cpuUsage >= threshold ? 'bg-red-500' : cpuUsage >= threshold * 0.7 ? 'bg-amber-500' : 'bg-violet-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${cpuUsage >= threshold ? 'bg-red-500' : cpuUsage >= threshold * 0.7 ? 'bg-amber-500' : 'bg-violet-500'}`}></span>
             </span>
             Real-Time Engine Status
           </h2>
@@ -125,7 +129,7 @@ const CpuMonitor = () => {
       {/* Info Card Note */}
       <div className="mt-4 p-3 bg-zinc-50 rounded-xl border border-zinc-200/60 text-center">
         <p className="text-xs text-zinc-500">
-          ⚙️ Auto-restart safety threshold set at <span className="font-semibold text-violet-600">70% CPU</span>.
+          ⚙️ Auto-restart safety threshold set at <span className="font-semibold text-violet-600">{threshold}% CPU</span>.
         </p>
       </div>
     </div>

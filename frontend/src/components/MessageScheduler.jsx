@@ -17,6 +17,7 @@ const MessageScheduler = () => {
   // Table Data State
   const [messages, setMessages] = useState([]);
   const [tableLoading, setTableLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   // Get current date string (YYYY-MM-DD) in local timezone to set min date attribute
   const todayStr = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD format
@@ -94,6 +95,28 @@ const MessageScheduler = () => {
       setError(err.response?.data?.message || 'Failed to connect to backend server');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    setDeletingId(id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const res = await api.delete(`/message/${id}`);
+
+      if (res.data && res.data.success) {
+        setMessages((currentMessages) => currentMessages.filter((msg) => msg._id !== id));
+        setSuccess(res.data.message || 'Message deleted successfully!');
+        setTimeout(() => setSuccess(null), 4000);
+      } else {
+        setError(res.data.message || 'Failed to delete message');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete message');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -282,12 +305,13 @@ const MessageScheduler = () => {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Time</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Status</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wider">Scheduled At</th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-semibold text-zinc-500 uppercase tracking-wider">Action</th>
               </tr>
             </thead>
             <tbody className="bg-transparent divide-y divide-zinc-200 text-sm">
               {messages.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-10 text-center text-zinc-400 font-medium bg-zinc-50/10">
+                  <td colSpan="7" className="px-6 py-10 text-center text-zinc-400 font-medium bg-zinc-50/10">
                     No scheduled messages found. Create one above!
                   </td>
                 </tr>
@@ -323,6 +347,17 @@ const MessageScheduler = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-xs text-zinc-500">
                       {formatDate(msg.createdAt)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(msg._id)}
+                        disabled={deletingId === msg._id}
+                        className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition-all duration-200 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Delete message"
+                      >
+                        {deletingId === msg._id ? 'Deleting...' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))
